@@ -1,5 +1,6 @@
 import axios from "axios";
 import rateLimit from "axios-rate-limit";
+
 import {
   BlockData,
   IOmniStakingData,
@@ -21,15 +22,17 @@ const symbol = "ZERO";
 export const getUserLPByBlock = async (
   blocks: BlockData
 ): Promise<OutputDataSchemaRow[]> => {
-  const timestamp = blocks.blockTimestamp;
-  const first = 1000;
-  const rows: OutputDataSchemaRow[] = [];
+  try {
+    const timestamp = blocks.blockTimestamp;
+    const first = 1000;
+    const rows: OutputDataSchemaRow[] = [];
 
-  let lastAddress = "0x0000000000000000000000000000000000000000";
+    let lastAddress = "0x0000000000000000000000000000000000000000";
 
-  console.log("working on LP stakers data");
-  do {
-    const query = `{
+    console.log("working on LP stakers data");
+    let dataAvailable = true;
+    do {
+      const query = `{
       tokenBalances(
         where: {id_gt: "${lastAddress}", balance_omni_lp_gt: "0"}
         first: ${first}
@@ -39,36 +42,45 @@ export const getUserLPByBlock = async (
       }
     }`;
 
-    const response = await axiosInstance.post(
-      queryURL,
-      { query },
-      {
-        headers: { "Content-Type": "application/json" },
+      const response = await axiosInstance.post(
+        queryURL,
+        { query },
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      const batch: IOmniStakingResponse = await response.data;
+
+      if (!batch.data || batch.data.tokenBalances.length == 0) {
+        dataAvailable = false;
       }
-    );
 
-    const batch: IOmniStakingResponse = await response.data;
+      batch.data.tokenBalances.forEach((data: IOmniStakingData) => {
+        rows.push({
+          block_number: blocks.blockNumber,
+          timestamp,
+          user_address: data.id,
+          token_address: tokenAddress,
+          token_balance: BigInt(data.balance_omni_lp),
+          token_symbol: symbol,
+          usd_price: 0,
+        });
 
-    if (!batch.data || batch.data.tokenBalances.length == 0) break;
-
-    batch.data.tokenBalances.forEach((data: IOmniStakingData) => {
-      rows.push({
-        block_number: blocks.blockNumber,
-        timestamp,
-        user_address: data.id,
-        token_address: tokenAddress,
-        token_balance: BigInt(data.balance_omni_lp),
-        token_symbol: symbol,
-        usd_price: 0,
+        lastAddress = data.id;
       });
 
-      lastAddress = data.id;
-    });
+      console.log(
+        `Processed ${rows.length} rows for DLP stakers. Last address is ${lastAddress}`
+      );
+    } while (dataAvailable);
 
-    console.log(
-      `Processed ${rows.length} rows for DLP stakers. Last address is ${lastAddress}`
-    );
-  } while (true);
-
-  return rows.filter((r) => r.token_balance > 1);
+    return rows.filter((r) => r.token_balance > 1);
+  } catch (error) {
+    const errorMessage = `Failed to fetch LP stakers data for block ${
+      blocks.blockNumber
+    }: ${error instanceof Error ? error.message : error}`;
+    console.error(errorMessage);
+    throw new Error(errorMessage);
+  }
 };
