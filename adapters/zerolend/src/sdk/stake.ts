@@ -1,5 +1,6 @@
 import axios from "axios";
 import rateLimit from "axios-rate-limit";
+
 import {
   BlockData,
   IOmniStakingData,
@@ -21,14 +22,17 @@ const symbol = "ZERO";
 export const getUserStakeByBlock = async (
   blocks: BlockData
 ): Promise<OutputDataSchemaRow[]> => {
-  const timestamp = blocks.blockTimestamp;
-  const first = 1000;
-  const rows: OutputDataSchemaRow[] = [];
+  try {
+    const timestamp = blocks.blockTimestamp;
+    const first = 1000;
+    const rows: OutputDataSchemaRow[] = [];
 
-  let lastAddress = "0x0000000000000000000000000000000000000000";
-  console.log("working on ZERO stakers data");
-  do {
-    const query = `{
+    let lastAddress = "0x0000000000000000000000000000000000000000";
+    console.log("working on ZERO stakers data");
+    let dataAvailable = true;
+
+    do {
+      const query = `{
       tokenBalances(
         where: {
           id_gt: "${lastAddress}",
@@ -41,36 +45,45 @@ export const getUserStakeByBlock = async (
       }
     }`;
 
-    const response = await axiosInstance.post(
-      queryURL,
-      { query },
-      {
-        headers: { "Content-Type": "application/json" },
+      const response = await axiosInstance.post(
+        queryURL,
+        { query },
+        {
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      const batch: IOmniStakingResponse = await response.data;
+
+      if (!batch.data || batch.data.tokenBalances.length == 0) {
+        dataAvailable = false;
       }
-    );
 
-    const batch: IOmniStakingResponse = await response.data;
+      batch.data.tokenBalances.forEach((data: IOmniStakingData) => {
+        rows.push({
+          block_number: blocks.blockNumber,
+          timestamp,
+          user_address: data.id,
+          token_address: tokenAddress,
+          token_balance: BigInt(data.balance_omni),
+          token_symbol: symbol,
+          usd_price: 0,
+        });
 
-    if (!batch.data || batch.data.tokenBalances.length == 0) break;
-
-    batch.data.tokenBalances.forEach((data: IOmniStakingData) => {
-      rows.push({
-        block_number: blocks.blockNumber,
-        timestamp,
-        user_address: data.id,
-        token_address: tokenAddress,
-        token_balance: BigInt(data.balance_omni),
-        token_symbol: symbol,
-        usd_price: 0,
+        lastAddress = data.id;
       });
 
-      lastAddress = data.id;
-    });
+      console.log(
+        `Processed ${rows.length} rows for single stakers. Last address is ${lastAddress}`
+      );
+    } while (dataAvailable);
 
-    console.log(
-      `Processed ${rows.length} rows for single stakers. Last address is ${lastAddress}`
-    );
-  } while (true);
-
-  return rows.filter((r) => r.token_balance > 1);
+    return rows.filter((r) => r.token_balance > 1);
+  } catch (error) {
+    const errorMessage = `Failed to fetch ZERO stakers data for block ${
+      blocks.blockNumber
+    }: ${error instanceof Error ? error.message : error}`;
+    console.error(errorMessage);
+    throw new Error(errorMessage);
+  }
 };

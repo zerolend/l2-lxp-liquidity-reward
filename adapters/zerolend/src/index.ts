@@ -58,19 +58,40 @@ readBlocksFromCSV("hourly_blocks.csv")
     console.error("Error reading CSV file:", err);
   });
 
+const retryAsync = async (
+  fn: () => Promise<any>,
+  retries: number = 3
+): Promise<any> => {
+  let attempt = 0;
+  while (attempt < retries) {
+    try {
+      return await fn();
+    } catch (error) {
+      attempt++;
+      if (attempt >= retries) {
+        console.error(`Function failed after ${retries} retries:`, error);
+        throw error;
+      }
+      console.warn(`Attempt ${attempt} failed. Retrying...`);
+    }
+  }
+};
+
 const getUserTVLByBlock = async (block: BlockData): Promise<any> => {
   let allCsvRows: OutputDataSchemaRow[] = []; // Array to accumulate CSV rows for all blocks
 
-  const resultTvlFoxy = await getUserTVLFoxyByBlock(block);
+  const resultTvlFoxy = await retryAsync(() => getUserTVLFoxyByBlock(block));
   allCsvRows = allCsvRows.concat(resultTvlFoxy);
 
-  const resultStake = await getUserStakeByBlock(block);
+  const resultStake = await retryAsync(() => getUserStakeByBlock(block));
   allCsvRows = allCsvRows.concat(resultStake);
 
-  const resultLp = await getUserLPByBlock(block);
+  const resultLp = await retryAsync(() => getUserLPByBlock(block));
   allCsvRows = allCsvRows.concat(resultLp);
 
-  const resultTvlLegacy = await getUserTVLLegacyByBlock(block);
+  const resultTvlLegacy = await retryAsync(() =>
+    getUserTVLLegacyByBlock(block)
+  );
   allCsvRows = allCsvRows.concat(resultTvlLegacy);
 
   return allCsvRows;
