@@ -13,6 +13,8 @@ const axiosInstance = rateLimit(axios.create(), {
   perMilliseconds: 1000,
 });
 
+const foxyStartBlockNo = 5218909;
+
 const queryURL =
   "https://api.goldsky.com/api/public/project_clsk1wzatdsls01wchl2e4n0y/subgraphs/zerolend-linea-foxy/1.0.0/gn";
 
@@ -20,6 +22,7 @@ export const getUserTVLFoxyByBlock = async (
   blocks: BlockData
 ): Promise<OutputDataSchemaRow[]> => {
   try {
+    if (blocks.blockNumber < foxyStartBlockNo) return [];
     const timestamp = blocks.blockTimestamp;
     const first = 1000;
     const rows: OutputDataSchemaRow[] = [];
